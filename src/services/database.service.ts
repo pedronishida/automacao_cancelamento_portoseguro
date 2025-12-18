@@ -1,6 +1,5 @@
 import sqlite3 from "sqlite3";
 import { PolicyRecord } from "../types";
-import { promisify } from "util";
 import path from "path";
 import fs from "fs";
 
@@ -66,13 +65,56 @@ export class DatabaseService {
   }
 
   /**
+   * Helper para executar comandos SQL
+   */
+  private dbRun(sql: string, params: any[] = []): Promise<{ lastID?: number; changes?: number }> {
+    return new Promise((resolve, reject) => {
+      this.db.run(sql, params, function (err: Error | null) {
+        if (err) {
+          reject(err);
+        } else {
+          resolve({ lastID: this.lastID, changes: this.changes });
+        }
+      });
+    });
+  }
+
+  /**
+   * Helper para buscar um registro
+   */
+  private dbGet<T = any>(sql: string, params: any[] = []): Promise<T | undefined> {
+    return new Promise((resolve, reject) => {
+      this.db.get(sql, params, (err: Error | null, row: T) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(row);
+        }
+      });
+    });
+  }
+
+  /**
+   * Helper para buscar múltiplos registros
+   */
+  private dbAll<T = any>(sql: string, params: any[] = []): Promise<T[]> {
+    return new Promise((resolve, reject) => {
+      this.db.all(sql, params, (err: Error | null, rows: T[]) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(rows || []);
+        }
+      });
+    });
+  }
+
+  /**
    * Inicializa o banco de dados criando as tabelas necessárias
    */
   private async initializeDatabase(): Promise<void> {
-    const run = promisify(this.db.run.bind(this.db));
-
     // Tabela de sessões de execução
-    await run(`
+    await this.dbRun(`
       CREATE TABLE IF NOT EXISTS execution_sessions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         fileName TEXT NOT NULL,
@@ -87,7 +129,7 @@ export class DatabaseService {
     `);
 
     // Tabela de registros processados
-    await run(`
+    await this.dbRun(`
       CREATE TABLE IF NOT EXISTS processed_records (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         sessionId INTEGER NOT NULL,
@@ -104,12 +146,12 @@ export class DatabaseService {
     `);
 
     // Índices para melhor performance
-    await run(`
+    await this.dbRun(`
       CREATE INDEX IF NOT EXISTS idx_session_status 
       ON execution_sessions(status)
     `);
 
-    await run(`
+    await this.dbRun(`
       CREATE INDEX IF NOT EXISTS idx_records_session 
       ON processed_records(sessionId)
     `);
@@ -122,25 +164,37 @@ export class DatabaseService {
     fileName: string,
     records: PolicyRecord[]
   ): Promise<number> {
-    const run = promisify(this.db.run.bind(this.db));
-    const get = promisify(this.db.get.bind(this.db));
-
     const startDate = new Date().toISOString();
     const totalRecords = records.length;
 
-    const result = await run(
+    const result = await this.dbRun(
       `INSERT INTO execution_sessions 
        (fileName, startDate, status, totalRecords, processedRecords, canceledRecords, errorRecords)
        VALUES (?, ?, 'running', ?, 0, 0, 0)`,
       [fileName, startDate, totalRecords]
     );
 
-    const sessionId = (result as any).lastID;
+    const sessionId = result.lastID || 0;
 
     // Salvar todos os registros iniciais
     await this.saveRecords(sessionId, records);
 
     return sessionId;
+  }
+
+  /**
+   * Helper para executar prepared statement
+   */
+  private stmtRun(stmt: sqlite3.Statement, params: any[]): Promise<void> {
+    return new Promise((resolve, reject) => {
+      stmt.run(params, (err: Error | null) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
   }
 
   /**
@@ -150,11 +204,8 @@ export class DatabaseService {
     sessionId: number,
     records: PolicyRecord[]
   ): Promise<void> {
-    const run = promisify(this.db.run.bind(this.db));
-    const all = promisify(this.db.all.bind(this.db));
-
     // Verificar se já existem registros para esta sessão
-    const existing = await all(
+    const existing = await this.dbAll<{ id: number }>(
       `SELECT id FROM processed_records WHERE sessionId = ?`,
       [sessionId]
     );
@@ -170,7 +221,7 @@ export class DatabaseService {
       const now = new Date().toISOString();
       for (let i = 0; i < records.length; i++) {
         const record = records[i];
-        await promisify(stmt.run.bind(stmt))(
+        await this.stmtRun(stmt, [
           sessionId,
           record.apolice,
           record.nome,
@@ -180,7 +231,7 @@ export class DatabaseService {
           now,
           i,
           JSON.stringify(record) // Salvar dados completos
-        );
+        ]);
       }
 
       stmt.finalize();
@@ -195,14 +246,14 @@ export class DatabaseService {
       const now = new Date().toISOString();
       for (let i = 0; i < records.length; i++) {
         const record = records[i];
-        await promisify(stmt.run.bind(stmt))(
+        await this.stmtRun(stmt, [
           record.status,
           record.observacao || "",
           now,
           JSON.stringify(record), // Atualizar dados completos
           sessionId,
           i
-        );
+        ]);
       }
 
       stmt.finalize();
@@ -219,17 +270,15 @@ export class DatabaseService {
     errors: number,
     status?: "running" | "completed" | "paused" | "stopped" | "error"
   ): Promise<void> {
-    const run = promisify(this.db.run.bind(this.db));
-
     if (status) {
-      await run(
+      await this.dbRun(
         `UPDATE execution_sessions 
          SET processedRecords = ?, canceledRecords = ?, errorRecords = ?, status = ?
          WHERE id = ?`,
         [processed, canceled, errors, status, sessionId]
       );
     } else {
-      await run(
+      await this.dbRun(
         `UPDATE execution_sessions 
          SET processedRecords = ?, canceledRecords = ?, errorRecords = ?
          WHERE id = ?`,
@@ -245,10 +294,9 @@ export class DatabaseService {
     sessionId: number,
     status: "completed" | "stopped" | "error"
   ): Promise<void> {
-    const run = promisify(this.db.run.bind(this.db));
     const endDate = new Date().toISOString();
 
-    await run(
+    await this.dbRun(
       `UPDATE execution_sessions 
        SET endDate = ?, status = ?
        WHERE id = ?`,
@@ -260,46 +308,40 @@ export class DatabaseService {
    * Busca uma sessão ativa (running ou paused)
    */
   async getActiveSession(): Promise<ExecutionSession | null> {
-    const get = promisify(this.db.get.bind(this.db));
-
-    const session = await get(
+    const session = await this.dbGet<ExecutionSession>(
       `SELECT * FROM execution_sessions 
        WHERE status IN ('running', 'paused')
        ORDER BY startDate DESC
        LIMIT 1`
     );
 
-    return session as ExecutionSession | null;
+    return session || null;
   }
 
   /**
    * Busca uma sessão por ID
    */
   async getSession(sessionId: number): Promise<ExecutionSession | null> {
-    const get = promisify(this.db.get.bind(this.db));
-
-    const session = await get(
+    const session = await this.dbGet<ExecutionSession>(
       `SELECT * FROM execution_sessions WHERE id = ?`,
       [sessionId]
     );
 
-    return session as ExecutionSession | null;
+    return session || null;
   }
 
   /**
    * Busca todos os registros de uma sessão
    */
   async getSessionRecords(sessionId: number): Promise<ProcessedRecord[]> {
-    const all = promisify(this.db.all.bind(this.db));
-
-    const records = await all(
+    const records = await this.dbAll<ProcessedRecord>(
       `SELECT * FROM processed_records 
        WHERE sessionId = ?
        ORDER BY recordIndex ASC`,
       [sessionId]
     );
 
-    return records as ProcessedRecord[];
+    return records;
   }
 
   /**
@@ -308,9 +350,7 @@ export class DatabaseService {
   async getSessionRecordsAsPolicyRecords(
     sessionId: number
   ): Promise<PolicyRecord[]> {
-    const all = promisify(this.db.all.bind(this.db));
-
-    const records = await all(
+    const records = await this.dbAll<{ recordData: string }>(
       `SELECT recordData FROM processed_records 
        WHERE sessionId = ?
        ORDER BY recordIndex ASC`,
@@ -318,23 +358,21 @@ export class DatabaseService {
     );
 
     // Parsear JSON de cada registro
-    return records.map((r: any) => JSON.parse(r.recordData) as PolicyRecord);
+    return records.map((r) => JSON.parse(r.recordData) as PolicyRecord);
   }
 
   /**
    * Lista todas as sessões
    */
   async listSessions(limit: number = 50): Promise<ExecutionSession[]> {
-    const all = promisify(this.db.all.bind(this.db));
-
-    const sessions = await all(
+    const sessions = await this.dbAll<ExecutionSession>(
       `SELECT * FROM execution_sessions 
        ORDER BY startDate DESC
        LIMIT ?`,
       [limit]
     );
 
-    return sessions as ExecutionSession[];
+    return sessions;
   }
 
   /**

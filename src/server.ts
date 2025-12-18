@@ -1,5 +1,5 @@
 import "dotenv/config";
-import express from "express";
+import express, { Request, Response } from "express";
 import multer from "multer";
 import cors from "cors";
 import { createServer } from "http";
@@ -146,7 +146,7 @@ const handleMulterError = (err: any, req: any, res: any, next: any) => {
  * POST /api/upload
  * Recebe planilha e retorna preview
  */
-app.post("/api/upload", upload.single("file"), handleMulterError, async (req, res) => {
+app.post("/api/upload", upload.single("file"), handleMulterError, async (req: Request, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: "Nenhum arquivo enviado" });

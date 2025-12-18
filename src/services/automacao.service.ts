@@ -273,10 +273,22 @@ export class AutomacaoService {
     
     // Salvar estado de parada no banco
     if (this.databaseService && this.sessionId) {
-      const status = this.statusService.isPaused() ? "paused" : "stopped";
-      await this.databaseService
-        .finishSession(this.sessionId, status)
-        .catch(() => {});
+      // Se está pausado, apenas atualizar status, não finalizar
+      if (this.statusService.isPaused()) {
+        await this.databaseService
+          .updateSessionProgress(
+            this.sessionId,
+            0,
+            0,
+            0,
+            "paused"
+          )
+          .catch(() => {});
+      } else {
+        await this.databaseService
+          .finishSession(this.sessionId, "stopped")
+          .catch(() => {});
+      }
     }
     
     this.statusService.stop();
