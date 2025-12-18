@@ -4,12 +4,15 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "build": "tsc && vite build",
+    "build": "npm run build:frontend && npm run build:backend",
+    "build:frontend": "vite build",
+    "build:backend": "tsc -p tsconfig.build.json",
     "dev": "vite",
     "dev:server": "tsx watch src/server.ts",
     "dev:all": "concurrently \"npm run dev\" \"npm run dev:server\"",
     "start": "node dist/server.js",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "postinstall": "npx playwright install --with-deps chromium"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
