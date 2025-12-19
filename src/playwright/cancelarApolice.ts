@@ -95,23 +95,52 @@ async function navigateToOrcamento(page: Page): Promise<void> {
     await page.waitForTimeout(1000);
     
     // Procurar pelo card "Imobiliária Residencial" usando múltiplos seletores
+    // Primeiro, aguardar a página carregar completamente
+    await page.waitForLoadState("networkidle", { timeout: 20000 }).catch(() => {});
+    await page.waitForTimeout(2000);
+    
     const cardSelectors = [
-      'div[data-gtm-name="meus-atalhos"]:has-text("Imobiliária Residencial")',
+      // Seletores por texto
       'h6:has-text("Imobiliária Residencial")',
+      'h5:has-text("Imobiliária Residencial")',
+      'h4:has-text("Imobiliária Residencial")',
+      'div:has-text("Imobiliária Residencial"):not(.modal-content)',
+      // Seletores por data attributes
+      'div[data-gtm-name="meus-atalhos"]:has-text("Imobiliária Residencial")',
+      '[data-testid*="imobiliaria"]:has-text("Residencial")',
+      '[data-testid*="residencial"]',
+      // Seletores por estrutura
       'div:has(h6:has-text("Imobiliária Residencial"))',
-      '[data-testid="card-title"]:has-text("Imobiliária Residencial")',
+      'div:has(h5:has-text("Imobiliária Residencial"))',
+      'a:has-text("Imobiliária Residencial")',
+      'button:has-text("Imobiliária Residencial")',
+      // Seletores mais genéricos
+      'div[class*="card"]:has-text("Imobiliária Residencial")',
+      'div[class*="Card"]:has-text("Imobiliária Residencial")',
     ];
     
     let cardClicked = false;
     for (const selector of cardSelectors) {
       try {
         const card = page.locator(selector).first();
-        if (await card.isVisible({ timeout: 5000 })) {
-          // Clicar no card (ou no container pai se necessário)
-          await card.click();
-          cardClicked = true;
-          await page.waitForTimeout(2000);
-          break;
+        const isVisible = await card.isVisible({ timeout: 5000 }).catch(() => false);
+        
+        if (isVisible) {
+          // Verificar se realmente contém o texto esperado
+          const text = await card.textContent().catch(() => "");
+          if (text && (text.includes("Imobiliária Residencial") || text.includes("Residencial"))) {
+            // Tentar clicar no card
+            await card.click({ timeout: 5000 });
+            cardClicked = true;
+            await page.waitForTimeout(2000);
+            
+            // Verificar se navegou para a página de orçamento
+            await page.waitForTimeout(2000);
+            const newUrl = page.url();
+            if (newUrl.includes("orcamento.do") || newUrl.includes("calculomultiproduto")) {
+              break; // Sucesso!
+            }
+          }
         }
       } catch {
         continue;
@@ -119,16 +148,33 @@ async function navigateToOrcamento(page: Page): Promise<void> {
     }
     
     if (!cardClicked) {
-      // Tentar clicar no botão de ação "forward" dentro do card
-      // Primeiro, encontrar o card e depois o botão dentro dele
-      const cardContainer = page.locator('div:has(h6:has-text("Imobiliária Residencial"))').first();
-      if (await cardContainer.isVisible({ timeout: 3000 }).catch(() => false)) {
-        const forwardButton = cardContainer.locator('button[data-testid="forward-action"]').first();
-        if (await forwardButton.isVisible({ timeout: 3000 }).catch(() => false)) {
-          await forwardButton.click();
-          cardClicked = true;
-          await page.waitForTimeout(2000);
+      // Tentar encontrar o card pelo container pai e clicar em qualquer elemento clicável dentro
+      try {
+        const allCards = page.locator('div[class*="card"], div[class*="Card"], div[data-gtm-name]');
+        const count = await allCards.count();
+        
+        for (let i = 0; i < count; i++) {
+          const card = allCards.nth(i);
+          const text = await card.textContent().catch(() => "");
+          if (text && text.includes("Imobiliária Residencial")) {
+            // Encontrar elemento clicável dentro do card
+            const clickable = card.locator('a, button, div[onclick], div[role="button"]').first();
+            if (await clickable.isVisible({ timeout: 2000 }).catch(() => false)) {
+              await clickable.click();
+              cardClicked = true;
+              await page.waitForTimeout(2000);
+              break;
+            } else {
+              // Se não encontrar elemento clicável, tentar clicar no próprio card
+              await card.click();
+              cardClicked = true;
+              await page.waitForTimeout(2000);
+              break;
+            }
+          }
         }
+      } catch (e) {
+        // Continuar para próxima tentativa
       }
     }
     

@@ -239,6 +239,9 @@ app.post("/api/executar", async (req, res) => {
         statusService.addLog("error", `Erro fatal: ${error.message}`);
       });
 
+    // Aguardar um pouco para garantir que o status foi atualizado
+    await new Promise(resolve => setTimeout(resolve, 100));
+
     res.json({ success: true, message: "Automação iniciada" });
   } catch (error) {
     console.error("Erro ao iniciar automação:", error);

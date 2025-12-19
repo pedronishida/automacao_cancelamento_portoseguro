@@ -155,11 +155,28 @@ export function connectWebSocket(
   onStatus: (status: StatusResponse["status"]) => void,
   onLog: (log: LogEntry) => void
 ): WebSocket {
-  // Usar o mesmo host do frontend, apenas mudando o protocolo
+  // Usar o mesmo host e porta do frontend, apenas mudando o protocolo
+  // No Railway, o WebSocket deve usar o mesmo domínio do HTTP (sem porta específica)
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const host = window.location.hostname;
-  const port = import.meta.env.VITE_WS_PORT || '3001';
-  const wsUrl = import.meta.env.VITE_WS_URL || `${protocol}//${host}:${port}`;
+  const host = window.location.host; // Usa host completo (inclui porta se necessário)
+  
+  // Se VITE_WS_URL estiver definido, usar diretamente
+  // Caso contrário, construir a URL baseada no host atual
+  let wsUrl: string;
+  if (import.meta.env.VITE_WS_URL) {
+    wsUrl = import.meta.env.VITE_WS_URL;
+  } else {
+    // Em produção (Railway), usar o mesmo host sem porta específica
+    // O Railway faz proxy automático
+    if (window.location.hostname.includes('railway.app') || window.location.hostname.includes('up.railway.app')) {
+      wsUrl = `${protocol}//${window.location.host}`;
+    } else {
+      // Em desenvolvimento local, usar porta 3001
+      const port = import.meta.env.VITE_WS_PORT || '3001';
+      wsUrl = `${protocol}//${window.location.hostname}:${port}`;
+    }
+  }
+  
   const ws = new WebSocket(wsUrl);
 
   ws.onmessage = (event) => {
