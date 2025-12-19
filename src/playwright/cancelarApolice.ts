@@ -31,6 +31,46 @@ async function navigateToHomepage(page: Page): Promise<void> {
 }
 
 /**
+ * Fecha modal/popup se aparecer na homepage
+ */
+async function closeModalIfPresent(page: Page): Promise<void> {
+  try {
+    // Aguardar um pouco para o modal aparecer (se aparecer)
+    await page.waitForTimeout(2000);
+    
+    // Tentar encontrar e fechar o modal usando vários seletores possíveis
+    const modalSelectors = [
+      'div.news-icon-close',
+      'div[data-gtm-name="seguro-viagem-cupom-de-desconto"] .news-icon-close',
+      '.modal-content .news-icon-close',
+      '[data-testid="icon-close"]',
+      'div.modal-content button',
+      '.modal-content .icon-Close',
+    ];
+    
+    for (const selector of modalSelectors) {
+      try {
+        const closeButton = page.locator(selector).first();
+        if (await closeButton.isVisible({ timeout: 3000 })) {
+          await closeButton.click();
+          await page.waitForTimeout(1000);
+          // Verificar se o modal foi fechado
+          const modalStillVisible = await page.locator('.modal-content').isVisible({ timeout: 1000 }).catch(() => false);
+          if (!modalStillVisible) {
+            break; // Modal fechado com sucesso
+          }
+        }
+      } catch {
+        continue; // Tentar próximo seletor
+      }
+    }
+  } catch (error) {
+    // Se não conseguir fechar o modal, continuar mesmo assim
+    console.warn("Não foi possível fechar o modal (pode não estar presente):", error);
+  }
+}
+
+/**
  * Navega para a página de orçamento clicando no card "Imobiliária Residencial"
  * Após o login, acessa a homepage e clica no card para abrir a página de orçamento
  */
@@ -48,8 +88,11 @@ async function navigateToOrcamento(page: Page): Promise<void> {
       await page.waitForTimeout(2000);
     }
     
-    // Aguardar o card aparecer na página
-    await page.waitForTimeout(2000);
+    // Fechar modal/popup se aparecer
+    await closeModalIfPresent(page);
+    
+    // Aguardar um pouco após fechar o modal
+    await page.waitForTimeout(1000);
     
     // Procurar pelo card "Imobiliária Residencial" usando múltiplos seletores
     const cardSelectors = [
