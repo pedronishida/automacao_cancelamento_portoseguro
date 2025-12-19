@@ -504,6 +504,11 @@ app.post("/api/retomar/:id", async (req, res) => {
   }
 });
 
+// Health check endpoint para Railway
+app.get("/health", (req, res) => {
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
 // Rota para servir o frontend
 app.get("*", (req, res) => {
   res.sendFile(path.join(process.cwd(), "dist", "index.html"));

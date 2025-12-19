@@ -287,49 +287,91 @@ async function executeCancelamentoFlow(page: Page): Promise<boolean> {
 async function clickNovoOrcamento(page: Page): Promise<void> {
   try {
     // Aguardar um pouco após o modal fechar
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
     
-    // Procurar pelo botão/container "Novo Orçamento"
+    // Verificar se já estamos na página de orçamento (pode ter redirecionado automaticamente)
+    const currentUrl = page.url();
+    if (currentUrl.includes("orcamento.do")) {
+      // Já estamos na página de orçamento, apenas aguardar carregar
+      await page.waitForLoadState("domcontentloaded", { timeout: 15000 });
+      await page.waitForTimeout(2000);
+      return;
+    }
+    
+    // Procurar pelo botão/container "Novo Orçamento" com múltiplos seletores
     const novoOrcamentoSelectors = [
       'div.containerDiv:has-text("Novo Orçamento")',
-      'div:has-text("Novo Orçamento")',
-      'div.containerDiv div:has-text("Novo Orçamento")',
+      'div.containerDiv > div:has-text("Novo Orçamento")',
+      'div:has-text("Novo Orçamento"):not(.modal-content)',
+      'div.containerDiv',
+      '[class*="containerDiv"]:has-text("Novo")',
+      'div:has-text("Novo Orçamento"):has(div)',
     ];
     
     let clicked = false;
     for (const selector of novoOrcamentoSelectors) {
       try {
         const novoOrcamentoButton = page.locator(selector).first();
-        if (await novoOrcamentoButton.isVisible({ timeout: 10000 })) {
-          await novoOrcamentoButton.click();
-          clicked = true;
-          await page.waitForTimeout(2000);
-          break;
+        const isVisible = await novoOrcamentoButton.isVisible({ timeout: 5000 }).catch(() => false);
+        
+        if (isVisible) {
+          // Verificar se realmente contém o texto "Novo Orçamento"
+          const text = await novoOrcamentoButton.textContent().catch(() => "");
+          if (text && text.includes("Novo Orçamento")) {
+            await novoOrcamentoButton.click();
+            clicked = true;
+            await page.waitForTimeout(2000);
+            
+            // Verificar se navegou para a página de orçamento
+            await page.waitForTimeout(2000);
+            const newUrl = page.url();
+            if (newUrl.includes("orcamento.do")) {
+              break; // Sucesso!
+            }
+          }
         }
       } catch {
         continue;
       }
     }
     
+    // Se não encontrou o botão, verificar se já estamos na página de orçamento
+    const finalUrl = page.url();
+    if (finalUrl.includes("orcamento.do")) {
+      await page.waitForLoadState("domcontentloaded", { timeout: 15000 });
+      await page.waitForTimeout(2000);
+      return;
+    }
+    
     if (!clicked) {
-      // Se não encontrou, tentar voltar para homepage como fallback
+      // Se não encontrou, voltar para homepage e clicar no card novamente
       console.warn("Botão 'Novo Orçamento' não encontrado, voltando para homepage");
       await navigateToHomepage(page);
       await page.waitForLoadState("domcontentloaded", { timeout: 15000 });
       await page.waitForTimeout(2000);
+      // Fechar modal se aparecer
+      await closeModalIfPresent(page);
+      // Tentar navegar para orçamento novamente
+      await navigateToOrcamento(page);
     } else {
       // Aguardar página de orçamento carregar
       await page.waitForLoadState("domcontentloaded", { timeout: 15000 });
       await page.waitForTimeout(2000);
     }
   } catch (error) {
-    // Em caso de erro, tentar voltar para homepage como fallback
+    // Em caso de erro, tentar voltar para homepage e navegar novamente
     console.warn("Erro ao clicar em 'Novo Orçamento', voltando para homepage:", error);
-    await navigateToHomepage(page).catch(() => {
+    try {
+      await navigateToHomepage(page);
+      await page.waitForLoadState("domcontentloaded", { timeout: 15000 });
+      await page.waitForTimeout(2000);
+      await closeModalIfPresent(page);
+      await navigateToOrcamento(page);
+    } catch (navError) {
       throw new Error(
         `Erro ao navegar após cancelamento: ${error instanceof Error ? error.message : String(error)}`
       );
-    });
+    }
   }
 }
 
