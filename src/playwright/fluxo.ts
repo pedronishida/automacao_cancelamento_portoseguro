@@ -16,7 +16,9 @@ export async function processarRegistro(
   page: Page,
   record: PolicyRecord,
   statusService: StatusService,
-  maxRetries: number = 2
+  maxRetries: number = 2,
+  username?: string,
+  password?: string
 ): Promise<AutomationResult> {
   let lastError: Error | null = null;
 
@@ -27,8 +29,8 @@ export async function processarRegistro(
         `Processando apólice ${record.apolice} (tentativa ${attempt}/${maxRetries})`
       );
 
-      // Executar cancelamento
-      const result = await cancelarApolice(page, record);
+      // Executar cancelamento (passar credenciais para relogin se necessário)
+      const result = await cancelarApolice(page, record, username, password);
 
       if (result.success) {
         statusService.addLog(

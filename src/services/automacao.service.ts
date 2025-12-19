@@ -189,13 +189,15 @@ export class AutomacaoService {
         }
 
         // Processar registro
-        if (this.page) {
-          const result = await processarRegistro(
-            this.page,
-            record,
-            this.statusService,
-            this.config.maxRetries
-          );
+                if (this.page) {
+                  const result = await processarRegistro(
+                    this.page,
+                    record,
+                    this.statusService,
+                    this.config.maxRetries,
+                    this.config.username,
+                    this.config.password
+                  );
 
           // Atualizar status do registro
           if (result.success) {

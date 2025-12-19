@@ -1,5 +1,6 @@
 import { Page } from "playwright";
 import { PolicyRecord } from "../types";
+import { login } from "./login";
 
 /**
  * Extrai apenas os últimos dígitos da apólice
@@ -74,13 +75,29 @@ async function closeModalIfPresent(page: Page): Promise<void> {
  * Navega para a página de orçamento clicando no card "Imobiliária Residencial"
  * Após o login, acessa a homepage e clica no card para abrir a página de orçamento
  */
-async function navigateToOrcamento(page: Page): Promise<void> {
+async function navigateToOrcamento(page: Page, username?: string, password?: string): Promise<void> {
   try {
     // Verificar se estamos na homepage
     const currentUrl = page.url();
     
+    // Se estiver na página de login, a sessão expirou - fazer login novamente
+    if (currentUrl.includes("template.LOGIN") || currentUrl.includes("login") || currentUrl.includes("template.LOGIN")) {
+      console.log("Sessão expirada detectada, fazendo login novamente...");
+      if (username && password) {
+        const loginSuccess = await login(page, username, password);
+        if (!loginSuccess) {
+          throw new Error("Falha ao fazer login novamente após expiração de sessão");
+        }
+        await page.waitForTimeout(3000);
+        // Após login, navegar para homepage
+        await navigateToHomepage(page);
+      } else {
+        throw new Error("Sessão expirada e credenciais não fornecidas");
+      }
+    }
+    
     // Se NÃO estiver na homepage, navegar para ela primeiro
-    if (!currentUrl.includes("novocol/homepage") && !currentUrl.includes("corretor.portoseguro.com.br/novocol")) {
+    if (!currentUrl.includes("novocol/homepage") && !currentUrl.includes("corretor.portoseguro.com.br/novocol") && !currentUrl.includes("orcamento.do")) {
       await navigateToHomepage(page);
     } else {
       // Se já estiver na homepage, aguardar carregar completamente
@@ -460,12 +477,19 @@ async function clickNovoOrcamento(page: Page): Promise<void> {
     if (!clicked) {
       // Se não encontrou, voltar para homepage e clicar no card novamente
       console.warn("Botão 'Novo Orçamento' não encontrado, voltando para homepage");
+      
+      // Verificar se a sessão expirou antes de navegar
+      const currentUrl = page.url();
+      if (currentUrl.includes("template.LOGIN") || currentUrl.includes("login")) {
+        throw new Error("Sessão expirada ao tentar voltar para homepage");
+      }
+      
       await navigateToHomepage(page);
       await page.waitForLoadState("domcontentloaded", { timeout: 15000 });
       await page.waitForTimeout(2000);
       // Fechar modal se aparecer
       await closeModalIfPresent(page);
-      // Tentar navegar para orçamento novamente
+      // Tentar navegar para orçamento novamente (sem credenciais aqui, pois já deve estar logado)
       await navigateToOrcamento(page);
     } else {
       // Aguardar página de orçamento carregar
