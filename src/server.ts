@@ -510,19 +510,64 @@ app.get("*", (req, res) => {
 });
 
 // Iniciar servidor
-server.listen(PORT, () => {
-  console.log(`🚀 Servidor rodando em http://localhost:${PORT}`);
-  console.log(`📊 WebSocket disponível em ws://localhost:${PORT}`);
+const HOST = process.env.HOST || "0.0.0.0";
+server.listen(PORT, HOST, () => {
+  console.log(`🚀 Servidor rodando em http://${HOST}:${PORT}`);
+  console.log(`📊 WebSocket disponível em ws://${HOST}:${PORT}`);
 });
 
 // Graceful shutdown
-process.on("SIGTERM", async () => {
-  console.log("Encerrando servidor...");
-  if (automacaoService) {
-    await automacaoService.stop();
-  }
-  server.close(() => {
-    console.log("Servidor encerrado");
+const gracefulShutdown = async (signal: string) => {
+  console.log(`Recebido ${signal}. Encerrando servidor graciosamente...`);
+  
+  // Parar de aceitar novas conexões
+  server.close(async () => {
+    console.log("Servidor HTTP encerrado");
+    
+    // Fechar WebSocket
+    wss.close(() => {
+      console.log("WebSocket Server encerrado");
+    });
+    
+    // Parar automação se estiver rodando
+    if (automacaoService) {
+      try {
+        await automacaoService.stop();
+        console.log("Automação encerrada");
+      } catch (error) {
+        console.error("Erro ao encerrar automação:", error);
+      }
+    }
+    
+    // Fechar banco de dados
+    try {
+      await databaseService.close();
+      console.log("Banco de dados fechado");
+    } catch (error) {
+      console.error("Erro ao fechar banco de dados:", error);
+    }
+    
+    console.log("Encerramento completo");
     process.exit(0);
   });
+  
+  // Forçar encerramento após 10 segundos
+  setTimeout(() => {
+    console.error("Forçando encerramento após timeout");
+    process.exit(1);
+  }, 10000);
+};
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+
+// Tratamento de erros não capturados
+process.on("uncaughtException", (error) => {
+  console.error("Erro não capturado:", error);
+  gracefulShutdown("uncaughtException");
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("Promise rejeitada não tratada:", reason);
+  console.error("Promise:", promise);
 });
