@@ -129,7 +129,16 @@ export class AutomacaoService {
       }
 
       // Processar cada registro sequencialmente a partir do startIndex
+      // Seguindo a ordem da planilha (de cima para baixo), pulando apenas os já cancelados
       for (let i = startIndex; i < records.length; i++) {
+        const record = records[i];
+        
+        // Pular registros já cancelados (mantém a ordem da planilha)
+        if (record.status === "cancelado") {
+          this.statusService.addLog("info", `Apólice ${record.apolice} já está cancelada. Pulando.`);
+          continue;
+        }
+        
         // Verificar se foi pausado
         if (this.statusService.isPaused()) {
           // Salvar estado de pausa no banco
@@ -170,8 +179,6 @@ export class AutomacaoService {
         if (!this.isRunning) {
           break;
         }
-
-        const record = records[i];
 
         // Atualizar status para processando
         records[i].status = "processando";

@@ -205,13 +205,13 @@ app.post("/api/executar", async (req, res) => {
       return res.status(400).json({ error: "Automação já está em execução" });
     }
 
-    // Filtrar apenas registros pendentes ou com erro
-    const recordsToProcess = currentRecords.filter(
+    // Verificar se há registros pendentes ou com erro para processar
+    const hasRecordsToProcess = currentRecords.some(
       (r) => r.status === "pendente" || r.status === "erro"
     );
 
-    if (recordsToProcess.length === 0) {
-      return res.status(400).json({ error: "Nenhum registro para processar" });
+    if (!hasRecordsToProcess) {
+      return res.status(400).json({ error: "Nenhum registro para processar (todos já foram processados)" });
     }
 
     // Criar serviço de automação com banco de dados
@@ -226,14 +226,16 @@ app.post("/api/executar", async (req, res) => {
       ? path.basename(currentFilePath)
       : `execucao_${Date.now()}.xlsx`;
 
-    // Encontrar índice inicial (primeiro registro pendente ou com erro)
+    // Encontrar índice inicial (primeiro registro pendente ou com erro na ordem da planilha)
+    // Isso mantém a ordem de cima para baixo, pulando apenas os já cancelados
     const startIndex = currentRecords.findIndex(
       (r) => r.status === "pendente" || r.status === "erro"
     );
 
-    // Iniciar processamento em background
+    // Passar TODA a lista (não filtrada) para manter a ordem original da planilha
+    // O processamento interno vai pular os registros já cancelados
     automacaoService
-      .processarRegistros(recordsToProcess, fileName, startIndex >= 0 ? startIndex : 0)
+      .processarRegistros(currentRecords, fileName, startIndex >= 0 ? startIndex : 0)
       .catch((error) => {
         console.error("Erro na automação:", error);
         statusService.addLog("error", `Erro fatal: ${error.message}`);
