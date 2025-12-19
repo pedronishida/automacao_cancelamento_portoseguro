@@ -97,52 +97,85 @@ async function navigateToOrcamento(page: Page): Promise<void> {
     // Procurar pelo card "Imobiliária Residencial" usando múltiplos seletores
     // Primeiro, aguardar a página carregar completamente
     await page.waitForLoadState("networkidle", { timeout: 20000 }).catch(() => {});
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
+    
+    // Debug: verificar o que está na página
+    const pageTitle = await page.title().catch(() => "");
+    const pageUrl = page.url();
+    console.log(`Navegando para orçamento. URL atual: ${pageUrl}, Título: ${pageTitle}`);
     
     const cardSelectors = [
-      // Seletores por texto
+      // Seletores por texto exato
       'h6:has-text("Imobiliária Residencial")',
       'h5:has-text("Imobiliária Residencial")',
       'h4:has-text("Imobiliária Residencial")',
+      'h3:has-text("Imobiliária Residencial")',
+      // Seletores por texto parcial
+      'h6:has-text("Residencial")',
+      'h5:has-text("Residencial")',
+      // Seletores por div com texto
       'div:has-text("Imobiliária Residencial"):not(.modal-content)',
+      'div:has-text("Residencial"):not(.modal-content):not(header):not(footer)',
       // Seletores por data attributes
       'div[data-gtm-name="meus-atalhos"]:has-text("Imobiliária Residencial")',
+      'div[data-gtm-name="meus-atalhos"]:has-text("Residencial")',
       '[data-testid*="imobiliaria"]:has-text("Residencial")',
       '[data-testid*="residencial"]',
       // Seletores por estrutura
       'div:has(h6:has-text("Imobiliária Residencial"))',
       'div:has(h5:has-text("Imobiliária Residencial"))',
+      'div:has(h6:has-text("Residencial"))',
+      'div:has(h5:has-text("Residencial"))',
+      // Seletores por links e botões
       'a:has-text("Imobiliária Residencial")',
+      'a:has-text("Residencial")',
       'button:has-text("Imobiliária Residencial")',
+      'button:has-text("Residencial")',
       // Seletores mais genéricos
       'div[class*="card"]:has-text("Imobiliária Residencial")',
       'div[class*="Card"]:has-text("Imobiliária Residencial")',
+      'div[class*="card"]:has-text("Residencial")',
+      'div[class*="Card"]:has-text("Residencial")',
+      // Seletores por role
+      '[role="button"]:has-text("Residencial")',
+      '[role="link"]:has-text("Residencial")',
     ];
     
     let cardClicked = false;
-    for (const selector of cardSelectors) {
+    for (let i = 0; i < cardSelectors.length; i++) {
+      const selector = cardSelectors[i];
       try {
         const card = page.locator(selector).first();
-        const isVisible = await card.isVisible({ timeout: 5000 }).catch(() => false);
+        const isVisible = await card.isVisible({ timeout: 3000 }).catch(() => false);
         
         if (isVisible) {
           // Verificar se realmente contém o texto esperado
           const text = await card.textContent().catch(() => "");
+          console.log(`Seletor ${i + 1}/${cardSelectors.length} encontrado: "${selector}", texto: "${text?.substring(0, 50)}"`);
+          
           if (text && (text.includes("Imobiliária Residencial") || text.includes("Residencial"))) {
             // Tentar clicar no card
+            console.log(`Tentando clicar no card encontrado com seletor: ${selector}`);
             await card.click({ timeout: 5000 });
             cardClicked = true;
-            await page.waitForTimeout(2000);
+            await page.waitForTimeout(3000);
             
             // Verificar se navegou para a página de orçamento
-            await page.waitForTimeout(2000);
             const newUrl = page.url();
+            console.log(`URL após clique: ${newUrl}`);
+            
             if (newUrl.includes("orcamento.do") || newUrl.includes("calculomultiproduto")) {
+              console.log("Navegação bem-sucedida via clique no card!");
               break; // Sucesso!
+            } else {
+              // Se não navegou, tentar próximo seletor
+              console.log("Clique não resultou em navegação, tentando próximo seletor...");
+              cardClicked = false;
             }
           }
         }
-      } catch {
+      } catch (error) {
+        // Continuar para próximo seletor
         continue;
       }
     }
@@ -179,7 +212,42 @@ async function navigateToOrcamento(page: Page): Promise<void> {
     }
     
     if (!cardClicked) {
-      throw new Error("Não foi possível encontrar o card 'Imobiliária Residencial' na homepage");
+      // Última tentativa: navegar diretamente para a URL de orçamento
+      // Extrair parâmetros da URL atual (homepage) para construir a URL de orçamento
+      const currentUrl = new URL(page.url());
+      const urlParams = currentUrl.searchParams;
+      
+      // Parâmetros comuns que podem estar na URL da homepage
+      const corsus = urlParams.get('corsus') || '05167J';
+      const webusrcod = urlParams.get('webusrcod') || '';
+      const usrtip = urlParams.get('usrtip') || 'S';
+      const sesnum = urlParams.get('sesnum') || '';
+      const cpf = urlParams.get('cpf') || '';
+      
+      // Tentar construir a URL de orçamento diretamente
+      if (sesnum && cpf) {
+        const orcamentoUrl = `https://wwws.portoseguro.com.br/calculomultiproduto/orcamento.do?menuid=COL-03Z72&method=escolherProduto&codigoEmpresa=18&codigoProduto=139&portal=1&orig=menu_calculo&corsus=${corsus}&webusrcod=${webusrcod}&usrtip=${usrtip}&sesnum=${sesnum}&cpf=${cpf}`;
+        
+        console.log("Tentando navegar diretamente para:", orcamentoUrl);
+        try {
+          await page.goto(orcamentoUrl, { waitUntil: "domcontentloaded", timeout: 20000 });
+          await page.waitForTimeout(2000);
+          
+          // Verificar se chegou na página de orçamento
+          const formSelect = page.locator('select#codigoEmpresa');
+          const isVisible = await formSelect.isVisible({ timeout: 5000 }).catch(() => false);
+          
+          if (isVisible) {
+            console.log("Navegação direta bem-sucedida!");
+            return; // Sucesso!
+          }
+        } catch (navError) {
+          console.warn("Erro ao navegar diretamente:", navError);
+        }
+      }
+      
+      // Se chegou aqui, todas as tentativas falharam
+      throw new Error("Não foi possível encontrar o card 'Imobiliária Residencial' na homepage e navegação direta também falhou");
     }
     
     // Aguardar navegação para a página de orçamento
