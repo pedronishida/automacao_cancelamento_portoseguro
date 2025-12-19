@@ -87,6 +87,9 @@ export class AutomacaoService {
     this.isRunning = true;
     this.statusService.initialize(records);
     this.statusService.start();
+    
+    // Garantir que o status seja emitido imediatamente
+    this.statusService.updateProgress(startIndex, 0, 0);
 
     try {
       // Criar ou recuperar sessão no banco de dados
