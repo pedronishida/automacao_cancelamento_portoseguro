@@ -2,14 +2,14 @@
   "name": "automao-cancelamento-porto-seguro",
   "private": true,
   "version": "1.0.0",
+  "type": "module",
   "scripts": {
-    "build": "npm run build:frontend && npm run build:backend",
+    "build": "npm run build:frontend",
     "build:frontend": "vite build",
-    "build:backend": "tsc -p tsconfig.build.json",
     "dev": "vite",
     "dev:server": "tsx watch src/server.ts",
     "dev:all": "concurrently \"npm run dev\" \"npm run dev:server\"",
-    "start": "node dist/server.js",
+    "start": "tsx src/server.ts",
     "type-check": "tsc --noEmit",
     "postinstall": "npx playwright install --with-deps chromium"
   },
@@ -76,6 +76,7 @@
     "tailwind-merge": "3.2.0",
     "tw-animate-css": "1.3.8",
     "vaul": "1.1.2",
+    "tsx": "^4.7.0",
     "ws": "^8.14.2",
     "xlsx": "^0.18.5"
   },
@@ -89,7 +90,6 @@
     "@vitejs/plugin-react": "4.7.0",
     "concurrently": "^8.2.2",
     "tailwindcss": "4.1.12",
-    "tsx": "^4.7.0",
     "typescript": "^5.3.3",
     "vite": "6.3.5"
   },
